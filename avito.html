@@ -1,0 +1,134 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Camera</title>
+<style>
+  html,body{margin:0;background:#000;color:#fff;font:14px system-ui}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;padding:10px}
+  button{font-size:15px;padding:10px 14px;border:0;border-radius:8px;background:#2fa8ff;color:#00121f;font-weight:700}
+  button.gray{background:#3a3a3a;color:#fff}
+  #panes{display:flex;gap:8px;padding:0 10px 10px}
+  .pane{position:relative;flex:1;min-width:0;background:#111;border-radius:10px;overflow:hidden}
+  .pane.back{border:3px solid #00e0ff}
+  video{display:block;width:100%;height:auto;background:#000}
+  .lbl{position:absolute;left:8px;top:8px;background:#000a;padding:3px 7px;border-radius:5px;font-size:12px}
+  #status{padding:0 10px 10px;color:#9fd7ff;min-height:18px}
+  #playback{width:calc(100% - 20px);margin:0 10px 10px;background:#000}
+  .hide{display:none}
+  a{color:#00e0ff}
+</style>
+
+<div class="bar">
+  <button id="show">Show cameras</button>
+  <button id="hide" class="gray">Hide cameras</button>
+  <button id="rec">Start video capture</button>
+  <button id="stop" class="gray">Stop</button>
+</div>
+
+<div id="status">Ready.</div>
+
+<div id="panes">
+  <div class="pane">
+    <video id="front" autoplay playsinline muted></video>
+    <div class="lbl">Front</div>
+  </div>
+  <div class="pane back">
+    <video id="back" autoplay playsinline muted></video>
+    <div class="lbl">Back</div>
+  </div>
+</div>
+
+<video id="playback" controls playsinline class="hide"></video>
+<div class="bar hide" id="saveRow"><a id="save" download="capture.webm">Download recording</a></div>
+
+<script>
+var front = document.getElementById('front');
+var back = document.getElementById('back');
+var statusEl = document.getElementById('status');
+var sFront = null, sBack = null, rec = null, chunks = [], recStream = null;
+
+function say(s){ statusEl.textContent = s; }
+function canUse(){ return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia); }
+function stopStream(s){ if(s){ s.getTracks().forEach(function(t){ try{t.stop();}catch(e){} }); } }
+
+async function openCameras(){
+  if(!canUse()){ say('No camera API here (page must be HTTPS).'); return; }
+  if(!sFront){
+    try{
+      sFront = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'user'}},audio:false});
+      front.srcObject = sFront;
+      front.play().catch(function(){});
+      say('Front camera on.');
+    }catch(e){ say('Front failed: '+e.name); }
+  }
+  if(!sBack){
+    try{
+      sBack = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+      back.srcObject = sBack;
+      back.play().catch(function(){});
+      say((sFront?'Front + ':'')+'Back camera on.');
+    }catch(e){ say((sFront?'Front only. ':'')+'Back failed: '+e.name); }
+  }
+}
+
+function closeCameras(){
+  if(rec && rec.state !== 'inactive'){ try{ rec.stop(); }catch(e){} }
+  stopStream(sFront); stopStream(sBack);
+  sFront = null; sBack = null;
+  front.srcObject = null; back.srcObject = null;
+  say('Cameras off.');
+}
+
+document.getElementById('show').onclick = function(){
+  document.getElementById('panes').classList.remove('hide');
+  openCameras();
+};
+
+document.getElementById('hide').onclick = function(){
+  closeCameras();
+  document.getElementById('panes').classList.add('hide');
+};
+
+document.getElementById('rec').onclick = async function(){
+  if(rec && rec.state === 'recording'){ say('Already recording.'); return; }
+  document.getElementById('panes').classList.remove('hide');
+  if(!sBack && !sFront) await openCameras();
+  recStream = sBack || sFront;
+  if(!recStream){ say('No camera stream to record.'); return; }
+
+  chunks = [];
+  var mime = 'video/webm;codecs=vp8';
+  if(!(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(mime))){
+    mime = 'video/webm';
+  }
+  try{
+    rec = new MediaRecorder(recStream, {mimeType:mime});
+  }catch(e){
+    try{ rec = new MediaRecorder(recStream); }catch(e2){ say('Recorder failed: '+e2.name); return; }
+  }
+  rec.ondataavailable = function(e){ if(e.data && e.data.size) chunks.push(e.data); };
+  rec.onstop = function(){
+    var blob = new Blob(chunks, {type:'video/webm'});
+    var url = URL.createObjectURL(blob);
+    var p = document.getElementById('playback');
+    p.src = url; p.classList.remove('hide');
+    var a = document.getElementById('save');
+    var ts = new Date().toISOString().replace(/[:.]/g,'-');
+    a.href = url; a.download = 'avito-cam-'+ts+'.webm';
+    document.getElementById('saveRow').classList.remove('hide');
+    try{ a.click(); }catch(e){}
+    say('Recording ready ('+Math.round(blob.size/1024)+' KB). Tap "Download recording" if it did not save.');
+    document.getElementById('rec').textContent = 'Start video capture';
+  };
+  rec.start(1000);
+  document.getElementById('rec').textContent = 'Recording…';
+  say('Recording started (video only).');
+};
+
+document.getElementById('stop').onclick = function(){
+  if(rec && rec.state !== 'inactive'){ rec.stop(); }
+  else { say('Not recording.'); }
+};
+
+setTimeout(openCameras, 300);
+</script>
